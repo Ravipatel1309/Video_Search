@@ -1,5 +1,13 @@
 from flask import Flask, request, jsonify
 from youtube_transcript_api import YouTubeTranscriptApi
+from fuzzywuzzy import fuzz
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+# Download the NLTK stopwords dataset
+import nltk
+nltk.download('stopwords')
+nltk.download('punkt')
 
 app = Flask(__name__)
 
@@ -14,7 +22,18 @@ def format_time(seconds):
 
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 
-def search_word_in_srt(srt_content, search_word):
+def search_word_in_srt(srt_content, search_word, similarity_threshold=60):
+    # Get the list of English stopwords
+    stop_words = set(stopwords.words("english"))
+
+    # Tokenize the search word and filter out the stopwords
+    search_word_tokens = word_tokenize(search_word.lower())
+    filtered_tokens = [word for word in search_word_tokens if word not in stop_words]
+
+    important_search_word = " ".join(filtered_tokens)
+
+    print(important_search_word)
+
     timecodes_list = []  # List to store all timecodes for the search word
 
     start_time, end_time, subtitle_text = None, None, ""
@@ -23,7 +42,7 @@ def search_word_in_srt(srt_content, search_word):
         line = line.strip()
 
         if not line:  # Blank line indicates the end of a subtitle entry
-            if search_word.lower() in subtitle_text.lower():
+            if fuzz.partial_ratio(important_search_word, subtitle_text.lower()) >= similarity_threshold:
                 timecodes_list.append(start_time)
 
             # Reset variables for the next subtitle entry
@@ -35,7 +54,7 @@ def search_word_in_srt(srt_content, search_word):
             subtitle_text += line + " "  # Append subtitle text
 
     # Check for the last subtitle entry
-    if search_word.lower() in subtitle_text.lower():
+    if fuzz.partial_ratio(important_search_word, subtitle_text.lower()) >= similarity_threshold:
         timecodes_list.append(start_time)
 
     return timecodes_list
